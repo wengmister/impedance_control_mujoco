@@ -36,3 +36,71 @@ Important points:
       <general biastype="affine" gainprm="1" biasprm="0 0 0"/>
 
 - The name “bias” is misleading: in MuJoCo it refers to *any* state-dependent contribution, not just a constant offset.
+
+## MuJoCo `mj_rne` ID
+
+### What `mj_rne` computes
+`mj_rne` performs Recursive Newton–Euler inverse dynamics.
+
+- With `flg_acc = 0`:
+  
+    $$
+      tau = C(q, qdot) + g(q)
+    $$
+
+  (bias forces only; ignores qacc)
+
+- With `flg_acc = 1`:
+  
+    $$
+      tau = M(q) * qacc + C(q, qdot) + g(q)
+    $$
+
+  (full inverse dynamics; uses qacc)
+
+### Meaning of `flg_acc`
+- `flg_acc = 0` → compute only Coriolis + gravity (assume desired acceleration = 0)
+- `flg_acc = 1` → include inertia term based on `data.qacc` (for desired accelerations)
+
+### When to use each mode
+- Use `flg_acc = 0` when:
+  - doing gravity compensation
+  - holding a static posture
+  - passive/floating behavior
+  - you have **no desired acceleration**
+
+- Use `flg_acc = 1` when:
+  - tracking a trajectory
+  - using PD control converted to desired qacc
+  - computed torque / inverse dynamics control
+  - operational-space or impedance control
+  - you **have a desired acceleration**
+
+### Role of `data.qacc`
+- For `flg_acc = 0`, `qacc` is ignored; it is common to set `data.qacc[:] = 0`.
+- For `flg_acc = 1`, `qacc` **must** contain your desired acceleration; do **not** zero it.
+
+### Relationship to `qfrc_bias`
+- `mj_rne(flg_acc = 0)` returns:
+
+    $$
+      C + g
+    $$
+
+  (rigid-body bias forces only)
+
+- `data.qfrc_bias` contains:
+
+    $$
+      C + g + passive forces
+    $$
+
+  (includes damping, actuator bias, springs, friction, soft constraints)
+
+Thus `mj_rne` gives clean rigid-body dynamics; `qfrc_bias` includes additional model-specific passive effects.
+
+### Summary
+- `flg_acc = 0` → use when desired acceleration is zero. Good for gravity comp.
+- `flg_acc = 1` → use when you compute a desired acceleration. Needed for proper inverse dynamics.
+- Zeroing `qacc` only makes sense when you truly want qacc_des = 0.
+
