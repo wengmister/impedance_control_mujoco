@@ -12,8 +12,8 @@ def main():
     """Main visualization function using interactive MuJoCo GUI."""
     # Path to the xarm7_nohand model
     model_dir = Path("mujoco_menagerie/ufactory_xarm7")
-    model_xml = model_dir / "scene_nohand.xml"
-    
+    model_xml = model_dir / "scene_passive.xml"
+
     
     # Load model
     print(f"Loading model from {model_xml}...")
