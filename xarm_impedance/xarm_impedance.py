@@ -30,8 +30,13 @@ EE_SITE = "attachment_site"
 EE_AXIS = np.array([0.0, 1.0, 0.0])
 EE_SWEEP_AMPLITUDE = 0.05  # meters
 EE_SWEEP_FREQUENCY_HZ = 0.05
-KX = np.array([100.0, 100.0, 100.0])
+KX = np.array([1000.0, 1000.0, 1000.0])
 DX = np.array([50.0, 50.0, 50.0])
+
+# IK solver parameters.
+IK_MAX_ITERS = 30
+IK_TOL = 1e-4
+IK_DAMPING = 1e-3
 
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
@@ -92,6 +97,30 @@ def task_space_impedance_torque(
     return tau
 
 
+def solve_position_ik(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    site_id: int,
+    target_pos: np.ndarray,
+    q_init: np.ndarray,
+) -> np.ndarray:
+    """Levenberg-Marquardt IK for site position only."""
+    q = q_init.copy()
+    for _ in range(IK_MAX_ITERS):
+        data.qpos[: model.nq] = q
+        data.qvel[:] = 0.0
+        mujoco.mj_forward(model, data)
+        err = target_pos - data.site_xpos[site_id]
+        if np.linalg.norm(err) < IK_TOL:
+            break
+        jacp = np.zeros((3, model.nv))
+        mujoco.mj_jacSite(model, data, jacp, None, site_id)
+        JJ = jacp @ jacp.T + IK_DAMPING * np.eye(3)
+        dq = jacp.T @ np.linalg.solve(JJ, err)
+        q += dq
+    return q
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="xArm7 controller demos")
     parser.add_argument(
@@ -99,6 +128,12 @@ def parse_args() -> argparse.Namespace:
         choices=("gravity", "joint_sine", "ee_sine"),
         default="ee_sine",
         help="Controller mode to run",
+    )
+    parser.add_argument(
+        "--space",
+        choices=("joint", "task"),
+        default="joint",
+        help="Impedance space for ee_sine mode",
     )
     return parser.parse_args()
 
@@ -119,16 +154,25 @@ def main():
 
     ee_site_id = None
     ee_home_pos = None
+    ik_workspace = None
+    prev_q_des = None
+    prev_t = None
     if args.mode == "ee_sine":
         ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
         if ee_site_id < 0:
             raise ValueError(f"Site '{EE_SITE}' not found in model.")
         ee_home_pos = data.site_xpos[ee_site_id].copy()
+        if args.space == "joint":
+            ik_workspace = mujoco.MjData(model)
+            prev_q_des = HOME_QPOS.copy()
+            prev_t = data.time
 
     print("Launching xArm7 controller demo...")
     print(f"  model: {MODEL_XML}")
     print(f"  joints: {model.njnt}, actuators: {model.nu}")
     print(f"  mode: {args.mode}")
+    if args.mode == "ee_sine":
+        print(f"  space: {args.space}")
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
@@ -142,7 +186,24 @@ def main():
                 tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
             elif args.mode == "ee_sine":
                 x_des, xd_des = ee_reference(data.time, ee_home_pos)
-                tau = task_space_impedance_torque(model, data, bias, ee_site_id, x_des, xd_des)
+                if args.space == "task":
+                    tau = task_space_impedance_torque(model, data, bias, ee_site_id, x_des, xd_des)
+                elif args.space == "joint":
+                    if ik_workspace is None:
+                        raise RuntimeError("IK workspace not initialized.")
+                    q_guess = prev_q_des if prev_q_des is not None else q
+                    q_des = solve_position_ik(model, ik_workspace, ee_site_id, x_des, q_guess)
+                    last_t = prev_t if prev_t is not None else data.time
+                    dt = max(data.time - last_t, 1e-6)
+                    if prev_q_des is None:
+                        qd_des = np.zeros_like(q_des)
+                    else:
+                        qd_des = (q_des - prev_q_des) / dt
+                    tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
+                    prev_q_des = q_des
+                    prev_t = data.time
+                else:
+                    raise ValueError(f"Unsupported space '{args.space}'")
             else:
                 raise ValueError(f"Unknown mode '{args.mode}'")
             data.ctrl[:] = tau
