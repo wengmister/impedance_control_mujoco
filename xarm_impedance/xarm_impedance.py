@@ -23,7 +23,15 @@ KD = np.array([40, 40, 35, 25, 18, 14, 10])
 
 # Small joint-space sine sweep around home pose.
 SINE_AMPLITUDE = np.array([0.00, 0.0, 0.05, 0.05, 0.1, 0.1, 0.1])
-SINE_FREQUENCY_HZ = 0.01
+SINE_FREQUENCY_HZ = 0.1
+
+# End-effector sweep definition (world-Y translation).
+EE_SITE = "attachment_site"
+EE_AXIS = np.array([0.0, 1.0, 0.0])
+EE_SWEEP_AMPLITUDE = 0.05  # meters
+EE_SWEEP_FREQUENCY_HZ = 0.05
+KX = np.array([100.0, 100.0, 100.0])
+DX = np.array([50.0, 50.0, 50.0])
 
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
@@ -57,12 +65,39 @@ def joint_sine_reference(t: float) -> tuple[np.ndarray, np.ndarray]:
     return q_des, qd_des
 
 
+def ee_reference(t: float, home_pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Desired EE trajectory: sinusoid along the specified axis."""
+    omega = 2.0 * np.pi * EE_SWEEP_FREQUENCY_HZ
+    x_des = home_pos + EE_AXIS * EE_SWEEP_AMPLITUDE * np.sin(omega * t)
+    xd_des = EE_AXIS * EE_SWEEP_AMPLITUDE * omega * np.cos(omega * t)
+    return x_des, xd_des
+
+
+def task_space_impedance_torque(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    bias: np.ndarray,
+    site_id: int,
+    x_des: np.ndarray,
+    xd_des: np.ndarray,
+) -> np.ndarray:
+    """Compute tau = J^T F + bias for a task-space impedance."""
+    jacp = np.zeros((3, model.nv))
+    jacr = np.zeros((3, model.nv))
+    mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
+    x = data.site_xpos[site_id].copy()
+    xd = jacp @ data.qvel
+    force = -KX * (x - x_des) - DX * (xd - xd_des)
+    tau = jacp.T @ force + bias
+    return tau
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="xArm7 controller demos")
     parser.add_argument(
         "--mode",
-        choices=("gravity", "joint_sine", "ee_traj"),
-        default="joint_sine",
+        choices=("gravity", "joint_sine", "ee_sine"),
+        default="ee_sine",
         help="Controller mode to run",
     )
     return parser.parse_args()
@@ -70,10 +105,6 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
-
-    if args.mode == "ee_traj":
-        print("End-effector trajectory mode not implemented yet.")
-        return
 
     if not MODEL_XML.exists():
         raise FileNotFoundError(f"Model file not found: {MODEL_XML}")
@@ -85,6 +116,14 @@ def main():
     data.qpos[: model.nq] = HOME_QPOS
     data.qvel[: model.nv] = 0.0
     mujoco.mj_forward(model, data)
+
+    ee_site_id = None
+    ee_home_pos = None
+    if args.mode == "ee_sine":
+        ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
+        if ee_site_id < 0:
+            raise ValueError(f"Site '{EE_SITE}' not found in model.")
+        ee_home_pos = data.site_xpos[ee_site_id].copy()
 
     print("Launching xArm7 controller demo...")
     print(f"  model: {MODEL_XML}")
@@ -101,6 +140,9 @@ def main():
             elif args.mode == "joint_sine":
                 q_des, qd_des = joint_sine_reference(data.time)
                 tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
+            elif args.mode == "ee_sine":
+                x_des, xd_des = ee_reference(data.time, ee_home_pos)
+                tau = task_space_impedance_torque(model, data, bias, ee_site_id, x_des, xd_des)
             else:
                 raise ValueError(f"Unknown mode '{args.mode}'")
             data.ctrl[:] = tau
