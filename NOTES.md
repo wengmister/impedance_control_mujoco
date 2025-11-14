@@ -104,3 +104,19 @@ Thus `mj_rne` gives clean rigid-body dynamics; `qfrc_bias` includes additional m
 - `flg_acc = 1` → use when you compute a desired acceleration. Needed for proper inverse dynamics.
 - Zeroing `qacc` only makes sense when you truly want qacc_des = 0.
 
+
+## Task-Space vs. Joint-Space Impedance (EE Sine Demo)
+
+- **Task-space impedance**:
+  - Can specify a Cartesian spring-damper at the end-effector (`force = -Kx(x-x*) - Dx(ẋ-ẋ*)`) and map it to joint torques with `Jᵀ force + bias`.
+  - Gains `KX/DX` are tuned directly in meters/Newtons, so the stiffness feels uniform in the chosen axes.
+  - No IK solve is required; MuJoCo only needs Jacobians and current state.
+  - Limitations: behavior depends on Jacobian rank and can conflict with joint limits; slows down when near singularities.
+
+- **Joint-space impedance via IK**:
+  - Desired EE path is converted to joint targets using an IK solver (here a damped least-squares iteration).
+  - The controller then uses the usual joint PD + bias law (`Kq/Dq` only), so no extra Cartesian gains are needed.
+  - This avoids Jacobian-transpose forces at runtime and keeps tracking behavior consistent with other joint-space modes.
+  - Trade-offs: requires a reliable IK solution each step and smoothing of `q̇` references; behavior inherits whatever the IK solver produces.
+
+- **Takeaway**: task-space impedance makes it easy to reason about Cartesian stiffness but needs its own gain set (`KX/DX`). The IK + joint-impedance path reuses `Kq/Dq` at the cost of solving IK every update. Choose based on whether you want Cartesian compliance or joint-level references.
