@@ -1,14 +1,13 @@
 """
-Joint-space impedance controller demo for the passive xArm7 MuJoCo model.
+Joint-space controller demos for the passive xArm7 MuJoCo model.
 """
 
+import argparse
 from pathlib import Path
-from typing import Tuple
 
-import numpy as np
 import mujoco
 import mujoco.viewer
-
+import numpy as np
 
 MODEL_DIR = Path("mujoco_menagerie/ufactory_xarm7")
 MODEL_XML = MODEL_DIR / "scene_passive.xml"
@@ -19,8 +18,12 @@ HOME_QVEL = np.zeros_like(HOME_QPOS)
 
 # Joint-space gains (Nm/rad and Nms/rad). 
 # Tuned for a stiff, well-damped feel.
-KP = np.array([300, 300, 250, 200, 150, 120, 100])
+KP = np.array([50, 50, 50, 50, 10, 10, 10])
 KD = np.array([40, 40, 35, 25, 18, 14, 10])
+
+# Small joint-space sine sweep around home pose.
+SINE_AMPLITUDE = np.array([0.00, 0.0, 0.05, 0.05, 0.1, 0.1, 0.1])
+SINE_FREQUENCY_HZ = 0.01
 
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
@@ -46,7 +49,32 @@ def impedance_torque(
     return -kp * (q - q_des) - kd * (qd - qd_des) + bias
 
 
+def joint_sine_reference(t: float) -> tuple[np.ndarray, np.ndarray]:
+    """Simple joint-space sine sweep around the home pose."""
+    omega = 2.0 * np.pi * SINE_FREQUENCY_HZ
+    q_des = HOME_QPOS + SINE_AMPLITUDE * np.sin(omega * t)
+    qd_des = SINE_AMPLITUDE * omega * np.cos(omega * t)
+    return q_des, qd_des
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="xArm7 controller demos")
+    parser.add_argument(
+        "--mode",
+        choices=("gravity", "joint_sine", "ee_traj"),
+        default="joint_sine",
+        help="Controller mode to run",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
+    if args.mode == "ee_traj":
+        print("End-effector trajectory mode not implemented yet.")
+        return
+
     if not MODEL_XML.exists():
         raise FileNotFoundError(f"Model file not found: {MODEL_XML}")
 
@@ -55,19 +83,26 @@ def main():
 
     # Start from the home posture to avoid large initial errors.
     data.qpos[: model.nq] = HOME_QPOS
-    data.qvel[: model.nv] = HOME_QVEL
+    data.qvel[: model.nv] = 0.0
     mujoco.mj_forward(model, data)
 
-    print("Launching xArm7 impedance controller demo...")
+    print("Launching xArm7 controller demo...")
     print(f"  model: {MODEL_XML}")
     print(f"  joints: {model.njnt}, actuators: {model.nu}")
+    print(f"  mode: {args.mode}")
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             q = data.qpos[: model.nq].copy()
             qd = data.qvel[: model.nv].copy()
             bias = compute_bias_forces(model, data)
-            tau = impedance_torque(q, qd, HOME_QPOS, HOME_QVEL, KP, KD, bias)
+            if args.mode == "gravity":
+                tau = bias
+            elif args.mode == "joint_sine":
+                q_des, qd_des = joint_sine_reference(data.time)
+                tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
+            else:
+                raise ValueError(f"Unknown mode '{args.mode}'")
             data.ctrl[:] = tau
             mujoco.mj_step(model, data)
             viewer.sync()
