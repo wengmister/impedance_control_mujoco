@@ -1,0 +1,12 @@
+[project]
+name = "impedance-controller-mujoco"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ipykernel>=7.1.0",
+    "mediapy>=1.2.4",
+    "mujoco>=3.3.7",
+    "tqdm>=4.67.1",
+]
