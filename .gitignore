@@ -1,1 +1,4 @@
+#Python artifacts
+__pycache__/
 .venv
+*.egg-info/

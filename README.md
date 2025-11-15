@@ -1,2 +1,2 @@
 # impedance_controller_mujoco
-Mujoco playground for impedance control
+A mujoco playground for impedance control
