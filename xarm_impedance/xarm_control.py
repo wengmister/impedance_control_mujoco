@@ -9,7 +9,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from xarm_impedance.ik import solve_position_ik
+from util.ik import solve_position_ik
 from util.torque_viz import TorqueIndicator
 from util.traj_viz import TrajectoryTrail
 
