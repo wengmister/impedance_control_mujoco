@@ -10,6 +10,7 @@ import mujoco.viewer
 import numpy as np
 
 from ik import solve_position_ik
+from torque_viz import TorqueIndicator
 from traj_viz import TrajectoryTrail
 
 MODEL_DIR = Path("mujoco_menagerie/ufactory_xarm7")
@@ -38,7 +39,7 @@ DX = np.array([50.0, 50.0, 50.0])
 
 # Figure-eight (infinite) trajectory parameters for the YZ plane.
 FIG8_Y_AMPLITUDE = 0.2
-FIG8_Z_AMPLITUDE = 0.1
+FIG8_Z_AMPLITUDE = 0.2
 FIG8_FREQUENCY_HZ = 0.05
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
@@ -165,6 +166,7 @@ def main():
         if (args.trail_length > 0 and ee_mode)
         else None
     )
+    torque_indicator = TorqueIndicator()
     if ee_mode:
         ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
         if ee_site_id < 0:
@@ -218,8 +220,12 @@ def main():
                 raise ValueError(f"Unknown mode '{args.mode}'")
             data.ctrl[:] = tau
             mujoco.mj_step(model, data)
+            ngeom = 0
+            ngeom = torque_indicator.draw(viewer, model, data, base_index=ngeom)
             if trail is not None:
-                trail.draw(viewer)
+                ngeom = trail.draw(viewer, base_index=ngeom)
+            else:
+                viewer.user_scn.ngeom = ngeom
             viewer.sync()
 
 

@@ -38,16 +38,16 @@ class TrajectoryTrail:
         self._steps_since = 0
         self._points.append(np.asarray(position, dtype=np.float64).copy())
 
-    def draw(self, viewer) -> None:
+    def draw(self, viewer, base_index: int = 0) -> int:
         if not self.enabled or self._points is None:
-            viewer.user_scn.ngeom = 0
-            return
+            viewer.user_scn.ngeom = base_index
+            return base_index
         user_scn = viewer.user_scn
-        user_scn.ngeom = 0
+        user_scn.ngeom = base_index
         max_geoms = len(user_scn.geoms)
         total = len(self._points)
         if total == 0:
-            return
+            return base_index
         for idx, pos in enumerate(self._points):
             if user_scn.ngeom >= max_geoms:
                 break
@@ -64,3 +64,4 @@ class TrajectoryTrail:
                 rgba,
             )
             user_scn.ngeom += 1
+        return user_scn.ngeom
