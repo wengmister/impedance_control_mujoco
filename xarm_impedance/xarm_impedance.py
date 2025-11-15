@@ -3,12 +3,14 @@ Joint-space controller demos for the passive xArm7 MuJoCo model.
 """
 
 import argparse
-from collections import deque
 from pathlib import Path
 
 import mujoco
 import mujoco.viewer
 import numpy as np
+
+from ik import solve_position_ik
+from traj_viz import TrajectoryTrail
 
 MODEL_DIR = Path("mujoco_menagerie/ufactory_xarm7")
 MODEL_XML = MODEL_DIR / "scene_passive.xml"
@@ -38,12 +40,6 @@ DX = np.array([50.0, 50.0, 50.0])
 FIG8_Y_AMPLITUDE = 0.2
 FIG8_Z_AMPLITUDE = 0.1
 FIG8_FREQUENCY_HZ = 0.05
-
-# IK solver parameters.
-IK_MAX_ITERS = 30
-IK_TOL = 1e-4
-IK_DAMPING = 1e-3
-
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
     """Return C(q, qd) + g(q) using Recursive Newton-Euler."""
@@ -121,59 +117,6 @@ def task_space_impedance_torque(
     return tau
 
 
-def draw_trail(viewer, positions) -> None:
-    """Render a trail of small spheres at the recorded positions."""
-    if not positions:
-        viewer.user_scn.ngeom = 0
-        return
-    user_scn = viewer.user_scn
-    user_scn.ngeom = 0
-    base_rgba = np.array([0.9, 0.2, 0.2, 0.6], dtype=np.float32)
-    size = np.array([0.004, 0.0, 0.0], dtype=np.float64)
-    identity = np.eye(3, dtype=np.float64).reshape(9)
-    max_geoms = len(user_scn.geoms)
-    for idx, pos in enumerate(positions):
-        if user_scn.ngeom >= max_geoms:
-            break
-        geom = user_scn.geoms[user_scn.ngeom]
-        alpha = (idx + 1) / len(positions)
-        rgba = base_rgba.copy()
-        rgba[3] *= alpha
-        mujoco.mjv_initGeom(
-            geom,
-            mujoco.mjtGeom.mjGEOM_SPHERE,
-            size,
-            pos,
-            identity,
-            rgba,
-        )
-        user_scn.ngeom += 1
-
-
-def solve_position_ik(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    site_id: int,
-    target_pos: np.ndarray,
-    q_init: np.ndarray,
-) -> np.ndarray:
-    """Levenberg-Marquardt IK for site position only."""
-    q = q_init.copy()
-    for _ in range(IK_MAX_ITERS):
-        data.qpos[: model.nq] = q
-        data.qvel[:] = 0.0
-        mujoco.mj_forward(model, data)
-        err = target_pos - data.site_xpos[site_id]
-        if np.linalg.norm(err) < IK_TOL:
-            break
-        jacp = np.zeros((3, model.nv))
-        mujoco.mj_jacSite(model, data, jacp, None, site_id)
-        JJ = jacp @ jacp.T + IK_DAMPING * np.eye(3)
-        dq = jacp.T @ np.linalg.solve(JJ, err)
-        q += dq
-    return q
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="xArm7 controller demos")
     parser.add_argument(
@@ -217,8 +160,11 @@ def main():
     ik_workspace = None
     prev_q_des = None
     prev_t = None
-    trail = deque(maxlen=args.trail_length) if (args.trail_length > 0 and ee_mode) else None
-    steps_since_trail = 0
+    trail = (
+        TrajectoryTrail(maxlen=args.trail_length, stride=50)
+        if (args.trail_length > 0 and ee_mode)
+        else None
+    )
     if ee_mode:
         ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
         if ee_site_id < 0:
@@ -242,10 +188,7 @@ def main():
             qd = data.qvel[: model.nv].copy()
             bias = compute_bias_forces(model, data)
             if ee_mode and trail is not None:
-                steps_since_trail += 1
-                if steps_since_trail >= 50:
-                    trail.append(data.site_xpos[ee_site_id].copy())
-                    steps_since_trail = 0
+                trail.update(data.site_xpos[ee_site_id])
             if args.mode == "gravity":
                 tau = bias
             elif args.mode == "joint_sine":
@@ -276,7 +219,7 @@ def main():
             data.ctrl[:] = tau
             mujoco.mj_step(model, data)
             if trail is not None:
-                draw_trail(viewer, trail)
+                trail.draw(viewer)
             viewer.sync()
 
 

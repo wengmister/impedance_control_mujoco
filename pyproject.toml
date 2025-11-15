@@ -10,3 +10,6 @@ dependencies = [
     "mujoco>=3.3.7",
     "tqdm>=4.67.1",
 ]
+
+[tool.setuptools]
+packages = ["xarm_impedance"]
