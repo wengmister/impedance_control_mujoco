@@ -11,5 +11,10 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
-[tool.setuptools]
-packages = ["xarm_impedance"]
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xarm_impedance*", "util*", "bilateral_impedance*"]

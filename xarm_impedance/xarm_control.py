@@ -9,9 +9,9 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from ik import solve_position_ik
-from torque_viz import TorqueIndicator
-from traj_viz import TrajectoryTrail
+from xarm_impedance.ik import solve_position_ik
+from util.torque_viz import TorqueIndicator
+from util.traj_viz import TrajectoryTrail
 
 MODEL_DIR = Path("mujoco_menagerie/ufactory_xarm7")
 MODEL_XML = MODEL_DIR / "scene_passive.xml"
