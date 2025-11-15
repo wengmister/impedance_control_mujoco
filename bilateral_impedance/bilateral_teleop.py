@@ -9,6 +9,7 @@ simple haptic feedback.
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -17,6 +18,9 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
+from util.torque_viz import TorqueIndicator
+from util.traj_viz import TrajectoryTrail
+
 
 MODEL_XML = Path("bilateral_impedance") / "scene_bilateral.xml"
 
@@ -24,7 +28,7 @@ MODEL_XML = Path("bilateral_impedance") / "scene_bilateral.xml"
 HOME_QPOS = np.array([0.0, -0.247, 0.0, 0.909, 0.0, 1.15644, 0.0])
 
 # Coupling gains between corresponding joints (Nm/rad, Nms/rad).
-K_COUPLE = np.array([50, 50, 50, 50, 15, 10, 10])
+K_COUPLE = np.array([200, 200, 200, 200, 100, 100, 100])
 D_COUPLE = np.array([30, 30, 25, 20, 12, 8, 6])
 
 
@@ -73,7 +77,26 @@ def set_home_configuration(data: mujoco.MjData, handles: ArmHandles, home: Seque
     data.qvel[handles.qvel_idx] = 0.0
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Bilateral impedance teleoperation demo")
+    parser.add_argument(
+        "--trail-length",
+        type=int,
+        default=0,
+        help="Samples to keep in each end-effector trail (0 disables)",
+    )
+    parser.add_argument(
+        "--trail-stride",
+        type=int,
+        default=25,
+        help="Simulation steps between trail samples",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+
     if not MODEL_XML.exists():
         raise FileNotFoundError(f"Model file not found: {MODEL_XML}")
 
@@ -93,6 +116,26 @@ def main() -> None:
     print(f"  joints per arm: {HOME_QPOS.size}")
     print("  master prefix: master_")
     print("  follower prefix: follower_")
+
+    trail_master = (
+        TrajectoryTrail(maxlen=args.trail_length, stride=args.trail_stride)
+        if args.trail_length > 0
+        else None
+    )
+    trail_follower = (
+        TrajectoryTrail(maxlen=args.trail_length, stride=args.trail_stride)
+        if args.trail_length > 0
+        else None
+    )
+    master_site = None
+    follower_site = None
+    if args.trail_length > 0:
+        master_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "master_attachment_site")
+        follower_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "follower_attachment_site")
+        if master_site < 0 or follower_site < 0:
+            raise ValueError("Attachment sites not found for master or follower arms.")
+
+    torque_indicator = TorqueIndicator(scale=0.12)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
@@ -116,6 +159,14 @@ def main() -> None:
             data.ctrl[follower.act_idx] = tau_follower
 
             mujoco.mj_step(model, data)
+            ngeom = torque_indicator.draw(viewer, model, data, base_index=0)
+            if trail_master is not None:
+                trail_master.update(data.site_xpos[master_site])
+                ngeom = trail_master.draw(viewer, base_index=ngeom)
+            if trail_follower is not None:
+                trail_follower.update(data.site_xpos[follower_site])
+                ngeom = trail_follower.draw(viewer, base_index=ngeom)
+            viewer.user_scn.ngeom = ngeom
             viewer.sync()
 
 
