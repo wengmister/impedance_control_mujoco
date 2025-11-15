@@ -19,14 +19,18 @@
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
-    <body name="left_arm_mount" pos="-0.35 0 0.0" quat="0.707107 0 0 0.707107">
-      <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>
-      <attach model="xarm7" body="link_base" prefix="left_"/>
+    <body name="follower_arm_mount" pos="-0.35 0 0.0" quat="0.707107 0 0 0.707107">
+      <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 0 1"/>
+      <attach model="xarm7" body="link_base" prefix="follower_"/>
     </body>
 
-    <body name="right_arm_mount" pos="0.35 0 0.0" quat="0.707107 0 0 0.707107">
-      <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>
-      <attach model="xarm7" body="link_base" prefix="right_"/>
+    <body name="master_arm_mount" pos="0.35 0 0.0" quat="0.707107 0 0 0.707107">
+      <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="0 1 0 0.8"/>
+      <attach model="xarm7" body="link_base" prefix="master_"/>
+    </body>
+
+    <body name="obstacle block" pos="-0.35 0.4 0.1">
+      <geom type="box" size="0.1 0.1 0.1" rgba="0.8 0.2 0.2 1"/>
     </body>
   </worldbody>
 </mujoco>
