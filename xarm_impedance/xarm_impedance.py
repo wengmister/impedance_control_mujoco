@@ -3,6 +3,7 @@ Joint-space controller demos for the passive xArm7 MuJoCo model.
 """
 
 import argparse
+from collections import deque
 from pathlib import Path
 
 import mujoco
@@ -120,6 +121,35 @@ def task_space_impedance_torque(
     return tau
 
 
+def draw_trail(viewer, positions) -> None:
+    """Render a trail of small spheres at the recorded positions."""
+    if not positions:
+        viewer.user_scn.ngeom = 0
+        return
+    user_scn = viewer.user_scn
+    user_scn.ngeom = 0
+    base_rgba = np.array([0.9, 0.2, 0.2, 0.6], dtype=np.float32)
+    size = np.array([0.004, 0.0, 0.0], dtype=np.float64)
+    identity = np.eye(3, dtype=np.float64).reshape(9)
+    max_geoms = len(user_scn.geoms)
+    for idx, pos in enumerate(positions):
+        if user_scn.ngeom >= max_geoms:
+            break
+        geom = user_scn.geoms[user_scn.ngeom]
+        alpha = (idx + 1) / len(positions)
+        rgba = base_rgba.copy()
+        rgba[3] *= alpha
+        mujoco.mjv_initGeom(
+            geom,
+            mujoco.mjtGeom.mjGEOM_SPHERE,
+            size,
+            pos,
+            identity,
+            rgba,
+        )
+        user_scn.ngeom += 1
+
+
 def solve_position_ik(
     model: mujoco.MjModel,
     data: mujoco.MjData,
@@ -158,6 +188,12 @@ def parse_args() -> argparse.Namespace:
         default="joint",
         help="Impedance space for EE modes",
     )
+    parser.add_argument(
+        "--trail-length",
+        type=int,
+        default=200,
+        help="Number of samples to retain for the EE trajectory trail (0 disables)",
+    )
     return parser.parse_args()
 
 
@@ -175,12 +211,14 @@ def main():
     data.qvel[: model.nv] = 0.0
     mujoco.mj_forward(model, data)
 
+    ee_mode = args.mode in {"ee_sine", "ee_traj"}
     ee_site_id = None
     ee_home_pos = None
     ik_workspace = None
     prev_q_des = None
     prev_t = None
-    ee_mode = args.mode in {"ee_sine", "ee_traj"}
+    trail = deque(maxlen=args.trail_length) if (args.trail_length > 0 and ee_mode) else None
+    steps_since_trail = 0
     if ee_mode:
         ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
         if ee_site_id < 0:
@@ -197,14 +235,17 @@ def main():
     print(f"  mode: {args.mode}")
     if ee_mode:
         print(f"  space: {args.space}")
-    if args.mode == "ee_sine":
-        print(f"  space: {args.space}")
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
             q = data.qpos[: model.nq].copy()
             qd = data.qvel[: model.nv].copy()
             bias = compute_bias_forces(model, data)
+            if ee_mode and trail is not None:
+                steps_since_trail += 1
+                if steps_since_trail >= 50:
+                    trail.append(data.site_xpos[ee_site_id].copy())
+                    steps_since_trail = 0
             if args.mode == "gravity":
                 tau = bias
             elif args.mode == "joint_sine":
@@ -234,6 +275,8 @@ def main():
                 raise ValueError(f"Unknown mode '{args.mode}'")
             data.ctrl[:] = tau
             mujoco.mj_step(model, data)
+            if trail is not None:
+                draw_trail(viewer, trail)
             viewer.sync()
 
 
