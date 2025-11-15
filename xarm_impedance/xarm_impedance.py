@@ -33,6 +33,11 @@ EE_SWEEP_FREQUENCY_HZ = 0.05
 KX = np.array([1000.0, 1000.0, 1000.0])
 DX = np.array([50.0, 50.0, 50.0])
 
+# Figure-eight (infinite) trajectory parameters for the YZ plane.
+FIG8_Y_AMPLITUDE = 0.2
+FIG8_Z_AMPLITUDE = 0.1
+FIG8_FREQUENCY_HZ = 0.05
+
 # IK solver parameters.
 IK_MAX_ITERS = 30
 IK_TOL = 1e-4
@@ -70,11 +75,29 @@ def joint_sine_reference(t: float) -> tuple[np.ndarray, np.ndarray]:
     return q_des, qd_des
 
 
-def ee_reference(t: float, home_pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def ee_line_reference(t: float, home_pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Desired EE trajectory: sinusoid along the specified axis."""
     omega = 2.0 * np.pi * EE_SWEEP_FREQUENCY_HZ
     x_des = home_pos + EE_AXIS * EE_SWEEP_AMPLITUDE * np.sin(omega * t)
     xd_des = EE_AXIS * EE_SWEEP_AMPLITUDE * omega * np.cos(omega * t)
+    return x_des, xd_des
+
+
+def ee_figure8_reference(t: float, home_pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Figure-eight (∞) trajectory in YZ plane."""
+    omega = 2.0 * np.pi * FIG8_FREQUENCY_HZ
+    theta = omega * t
+    y_offset = FIG8_Y_AMPLITUDE * np.cos(theta)
+    z_component = np.cos(theta) * np.sin(theta)
+    z_offset = FIG8_Z_AMPLITUDE * z_component
+    x_des = home_pos.copy()
+    x_des[1] = home_pos[1] + y_offset
+    x_des[2] = home_pos[2] + z_offset
+    ydot = -FIG8_Y_AMPLITUDE * omega * np.sin(theta)
+    zdot = FIG8_Z_AMPLITUDE * np.cos(2.0 * theta) * omega
+    xd_des = np.zeros(3)
+    xd_des[1] = ydot
+    xd_des[2] = zdot
     return x_des, xd_des
 
 
@@ -125,15 +148,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="xArm7 controller demos")
     parser.add_argument(
         "--mode",
-        choices=("gravity", "joint_sine", "ee_sine"),
-        default="ee_sine",
+        choices=("gravity", "joint_sine", "ee_sine", "ee_traj"),
+        default="ee_traj",
         help="Controller mode to run",
     )
     parser.add_argument(
         "--space",
         choices=("joint", "task"),
         default="joint",
-        help="Impedance space for ee_sine mode",
+        help="Impedance space for EE modes",
     )
     return parser.parse_args()
 
@@ -157,7 +180,8 @@ def main():
     ik_workspace = None
     prev_q_des = None
     prev_t = None
-    if args.mode == "ee_sine":
+    ee_mode = args.mode in {"ee_sine", "ee_traj"}
+    if ee_mode:
         ee_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, EE_SITE)
         if ee_site_id < 0:
             raise ValueError(f"Site '{EE_SITE}' not found in model.")
@@ -171,6 +195,8 @@ def main():
     print(f"  model: {MODEL_XML}")
     print(f"  joints: {model.njnt}, actuators: {model.nu}")
     print(f"  mode: {args.mode}")
+    if ee_mode:
+        print(f"  space: {args.space}")
     if args.mode == "ee_sine":
         print(f"  space: {args.space}")
 
@@ -184,8 +210,11 @@ def main():
             elif args.mode == "joint_sine":
                 q_des, qd_des = joint_sine_reference(data.time)
                 tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
-            elif args.mode == "ee_sine":
-                x_des, xd_des = ee_reference(data.time, ee_home_pos)
+            elif args.mode in {"ee_sine", "ee_traj"}:
+                if args.mode == "ee_sine":
+                    x_des, xd_des = ee_line_reference(data.time, ee_home_pos)
+                else:
+                    x_des, xd_des = ee_figure8_reference(data.time, ee_home_pos)
                 if args.space == "task":
                     tau = task_space_impedance_torque(model, data, bias, ee_site_id, x_des, xd_des)
                 elif args.space == "joint":
@@ -195,10 +224,7 @@ def main():
                     q_des = solve_position_ik(model, ik_workspace, ee_site_id, x_des, q_guess)
                     last_t = prev_t if prev_t is not None else data.time
                     dt = max(data.time - last_t, 1e-6)
-                    if prev_q_des is None:
-                        qd_des = np.zeros_like(q_des)
-                    else:
-                        qd_des = (q_des - prev_q_des) / dt
+                    qd_des = np.zeros_like(q_des) if prev_q_des is None else (q_des - prev_q_des) / dt
                     tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
                     prev_q_des = q_des
                     prev_t = data.time
