@@ -58,7 +58,7 @@ $$
 
 **Step 2 — Reflect environment forces back to B**
 
-Given environment wrench `$F_{\text{env},A}$` at the slave:
+Given environment wrench $F_{\text{env},A}$ at the slave:
 
 $$
 τ_B = J_B^T ( S · F_{\text{env},A} ) + τ_B^{grav}
@@ -86,7 +86,7 @@ Where:
 
 ---
 
-## **3. Virtual Proxy / Virtual Coupling (Stable and widely used)**
+## **3. Virtual Proxy**
 
 **Idea:**
 Introduce an intermediate “proxy” pose $x_P$ between master and slave.
@@ -95,17 +95,17 @@ This creates a *passive stable coupling* instead of hard binding.
 Master B → Proxy coupling:
 
 $$
-F_B = K_B (x_P − x_B) + D_B (dot{x_P} − dot{x_B})
+F_B = K_B (x_P − x_B) + D_B (\dot{x_P} − \dot{x_B})
 $$
 
 Slave A → Proxy tracking:
 
 $$
-F_A^{cmd} = K_A (x_P − x_A) + D_A (dot{x_P} − dot{x_A})
+F_A^{cmd} = K_A (x_P − x_A) + D_A (\dot{x_P} − \dot{x_A})
 τ_A = J_A^T F_A^{cmd} + τ_A^{grav}
 $$
 
-Proxy interacts with environment through `$F_{\text{env},A}$`.
+Proxy interacts with environment through $F_{\text{env},A}$.
 
 Force reflection back to B:
 
