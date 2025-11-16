@@ -16,15 +16,18 @@ MODEL_DIR = Path("xarm_impedance/scene")
 MODEL_XML = MODEL_DIR / "scene_franka_passive.xml"
 EE_SITE = "franka_attachment_site"
 
-HOME_QPOS = np.array([0.0, -0.5, 0.0, -2.0, 0.0, 1.57079, -0.7853])
+HOME_QPOS = np.array([0.0, -0.6, 0.0, -2.1, 0.0, 1.57079, -0.7853])
 
 KX = np.array([3000.0, 2000.0, 2000.0])
 DX = np.array([100.0, 100.0, 100.0])
 KR = np.array([400.0, 400.0, 400.0])
 DR = np.array([5.0, 5.0, 5.0])
 
-K_NULL = np.array([5.0, 5.0, 5.0, 2.0, 2.0, 2.0, 1.0])
-D_NULL = np.array([1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.2])
+K_NULL = np.array([10.0, 10.0, 10.0, 5.0, 5.0, 5.0, 1.0])
+D_NULL = np.array([1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.1])
+
+SWEEP_AMPLITUDE = 1.2 # rad
+SWEEP_FREQUENCY_HZ = 0.2
 
 
 def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarray:
@@ -69,8 +72,13 @@ def nullspace_projector(jac: np.ndarray) -> np.ndarray:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="xArm7 null-space manipulation demo")
-    parser.add_argument("--mode", choices=("hold", "figure8"), default="figure8")
+    parser = argparse.ArgumentParser(description="Franka null-space manipulation demo")
+    parser.add_argument(
+        "--mode",
+        choices=("hold", "hold_sweep", "figure8"),
+        default="figure8",
+        help="Task trajectory / null-space behavior",
+    )
     parser.add_argument("--trail-length", type=int, default=200)
     return parser.parse_args()
 
@@ -120,13 +128,24 @@ def main() -> None:
             jacp = np.zeros((3, model.nv))
             jacr = np.zeros((3, model.nv))
             mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
-            J = np.vstack([jacp, jacr])
-            N = nullspace_projector(J)
+            full_jac = np.vstack([jacp, jacr])
+            N = nullspace_projector(full_jac)
 
-            q_err = HOME_QPOS - data.qpos[: model.nq]
+            q_target = HOME_QPOS.copy()
+            qd_target = np.zeros_like(q_target)
+            if args.mode == "hold_sweep":
+                omega = 2.0 * np.pi * SWEEP_FREQUENCY_HZ
+                q_target[0] = SWEEP_AMPLITUDE * np.sin(omega * data.time)
+                qd_target[0] = SWEEP_AMPLITUDE * omega * np.cos(omega * data.time)
+
+            q = data.qpos[: model.nq]
             qd = data.qvel[: model.nv]
-            # tau_null = K_NULL * q_err - D_NULL * qd
-            tau_null = -D_NULL * qd
+            if args.mode == "hold_sweep":
+                q_err = q_target - q
+                qd_err = qd_target - qd
+                tau_null = K_NULL * q_err - D_NULL * qd_err
+            else:
+                tau_null = -D_NULL * qd
             tau = tau_task + N @ tau_null + bias
 
             data.ctrl[:] = tau
