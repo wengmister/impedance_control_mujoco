@@ -19,8 +19,8 @@ from util.torque_viz import TorqueIndicator
 from util.traj_viz import TrajectoryTrail
 
 
-# MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_duoxarm.xml"
-MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_franka.xml"
+# MODEL_XML = Path("bilateral_impedance/scenes") / "scene_bilateral_duoxarm.xml"
+MODEL_XML = Path("bilateral_impedance/scenes") / "scene_bilateral_xarm_franka.xml"
 
 # Home pose pulled from the single-arm controller demo.
 HOME_QPOS_XARM = np.array([0.0, -0.247, 0.0, 0.909, 0.0, 1.15644, 0.0])

@@ -24,8 +24,8 @@ import numpy as np
 from util.traj_viz import TrajectoryTrail
 
 
-# MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_franka.xml"
-MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_ur5e.xml"
+# MODEL_XML = Path("bilateral_impedance/scenes") / "scene_bilateral_xarm_franka.xml"
+MODEL_XML = Path("bilateral_impedance/scenes") / "scene_bilateral_xarm_ur5e.xml"
 
 # Virtual coupling gains (Cartesian translation/rotation).
 K_MASTER_POS = np.diag([600.0, 600.0, 600.0])

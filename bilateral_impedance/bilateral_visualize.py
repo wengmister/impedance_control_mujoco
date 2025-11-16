@@ -11,8 +11,8 @@ import mujoco.viewer
 def main():
     """Main visualization function using interactive MuJoCo GUI."""
     # Path to the xarm7_nohand model
-    model_dir = Path("bilateral_impedance")
-    model_xml = model_dir / "scene_bilateral_xarm_franka.xml"
+    model_dir = Path("bilateral_impedance/scenes")
+    model_xml = model_dir / "scene_bilateral_xarm_ur5e.xml"
 
     
     # Load model
