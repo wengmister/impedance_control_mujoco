@@ -99,7 +99,6 @@ Important points:
 
 Thus `mj_rne` gives clean rigid-body dynamics; `qfrc_bias` includes additional model-specific passive effects.
 
-### Summary
 - `flg_acc = 0` → use when desired acceleration is zero. Good for gravity comp.
 - `flg_acc = 1` → use when you compute a desired acceleration. Needed for proper inverse dynamics.
 - Zeroing `qacc` only makes sense when you truly want qacc_des = 0.
@@ -119,4 +118,63 @@ Thus `mj_rne` gives clean rigid-body dynamics; `qfrc_bias` includes additional m
   - This avoids Jacobian-transpose forces at runtime and keeps tracking behavior consistent with other joint-space modes.
   - Trade-offs: requires a reliable IK solution each step and smoothing of `q̇` references; behavior inherits whatever the IK solver produces.
 
-- **Takeaway**: task-space impedance makes it easy to reason about Cartesian stiffness but needs its own gain set (`KX/DX`). The IK + joint-impedance path reuses `Kq/Dq` at the cost of solving IK every update. Choose based on whether you want Cartesian compliance or joint-level references.
+task-space impedance makes it easy to reason about Cartesian stiffness but needs its own gain set (`KX/DX`). The IK + joint-impedance path reuses `Kq/Dq` at the cost of solving IK every update. Choose based on whether Cartesian compliance or joint-level references is preferred.
+
+### Limitations
+
+However, joint-based impedance control does not guarantee
+
+- natural Cartesian rotational stiffness
+- consistent SO(3) error metrics
+- manipulability-aware torque distribution
+- null-space freedom
+
+Instead you get a “backdoor” version of Cartesian control.
+
+---
+
+## Why IK-based joint impedance *implicitly* controls orientation
+
+“joint-space mode” does this:
+
+```python
+q_des = solve_position_ik(..., x_des)
+qd_des = (q_des - prev_q_des)/dt
+tau = impedance_torque(q, qd, q_des, qd_des, KP, KD, bias)
+```
+
+Even though the IK is called **solve_position_ik**, in xArm7's case:
+
+* The IK solver typically returns a **full 7-DoF pose solution**, meaning it enforces **position + orientation** (unless you explicitly ignore orientation constraints).
+* The joint-space error term
+  [
+  -K_q (q - q_{des})
+  ]
+  drives the arm toward a configuration that **induces the desired orientation at the end-effector**.
+
+The robot “cares” about orientation only because the IK solution encodes that orientation.
+
+---
+
+### IK-based joint impedance ≠ true Cartesian impedance
+
+
+| Behavior                        | Status                                                       |
+| ------------------------------- | ------------------------------------------------------------ |
+| Orientation maintained?         | **Yes, through IK pose constraint**                          |
+| Smooth rotation response?       | Maybe ― depends on IK linearization                          |
+| Consistent stiffness in SE(3)?  | ❌ No                                                         |
+| Null-space freedom?             | ❌ No — joint impedance removes it                            |
+| Accurate torque-level behavior? | ❌ No — forces not mapped via Jacobian                        |
+| Natural compliance?             | ❌ No, orientation and translation tied to joint-space metric |
+
+So yes it works, but it’s not the “real thing.”
+
+This is:
+
+* **Implicit**
+* **Stiff**
+* **Not in task-space coordinates**
+* **Not compliant**
+* **Not null-space preserving**
+

@@ -34,8 +34,13 @@ EE_SITE = "attachment_site"
 EE_AXIS = np.array([0.0, 1.0, 0.0])
 EE_SWEEP_AMPLITUDE = 0.05  # meters
 EE_SWEEP_FREQUENCY_HZ = 0.05
+
+# Task space translation gains (N/m and Ns/m).
 KX = np.array([1000.0, 1000.0, 1000.0])
 DX = np.array([50.0, 50.0, 50.0])
+# Task-space rotational gains (around x,y,z)
+KR = np.array([500.0, 500.0, 500.0])         # N·m/rad
+DR = np.array([2.0, 2.0, 2.0])            # N·m·s/rad
 
 # Figure-eight (infinite) trajectory parameters for the YZ plane.
 FIG8_Y_AMPLITUDE = 0.2
@@ -99,6 +104,17 @@ def ee_figure8_reference(t: float, home_pos: np.ndarray) -> tuple[np.ndarray, np
     return x_des, xd_des
 
 
+def rotation_error(R: np.ndarray, R_des: np.ndarray) -> np.ndarray:
+    """Orientation error expressed in world coordinates."""
+    R_err = R_des.T @ R
+    e_local = 0.5 * np.array([
+        R_err[2, 1] - R_err[1, 2],
+        R_err[0, 2] - R_err[2, 0],
+        R_err[1, 0] - R_err[0, 1],
+    ])
+    return R_des @ e_local
+
+
 def task_space_impedance_torque(
     model: mujoco.MjModel,
     data: mujoco.MjData,
@@ -106,16 +122,33 @@ def task_space_impedance_torque(
     site_id: int,
     x_des: np.ndarray,
     xd_des: np.ndarray,
+    R_des: np.ndarray,
+    omega_des: np.ndarray,
 ) -> np.ndarray:
-    """Compute tau = J^T F + bias for a task-space impedance."""
+    """Compute tau = J^T * wrench + bias for 6D task-space impedance."""
     jacp = np.zeros((3, model.nv))
     jacr = np.zeros((3, model.nv))
     mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
-    x = data.site_xpos[site_id].copy()
-    xd = jacp @ data.qvel
-    force = -KX * (x - x_des) - DX * (xd - xd_des)
-    tau = jacp.T @ force + bias
+
+    # Position and linear velocity
+    x  = data.site_xpos[site_id].copy()            # (3,)
+    xd = jacp @ data.qvel                          # (3,)
+
+    # Orientation and angular velocity
+    R    = data.site_xmat[site_id].reshape(3, 3)   # current R
+    e_R  = rotation_error(R, R_des)                # (3,)
+    omega = jacr @ data.qvel                       # (3,)
+
+    # Translational impedance
+    F = -KX * (x - x_des) - DX * (xd - xd_des)     # (3,)
+
+    # Rotational impedance
+    M = -KR * e_R - DR * (omega - omega_des)       # (3,)
+
+    # Map to joint torques
+    tau = jacp.T @ F + jacr.T @ M + bias
     return tau
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -172,6 +205,7 @@ def main():
         if ee_site_id < 0:
             raise ValueError(f"Site '{EE_SITE}' not found in model.")
         ee_home_pos = data.site_xpos[ee_site_id].copy()
+        ee_home_rot = data.site_xmat[ee_site_id].reshape(3, 3).copy()
         if args.space == "joint":
             ik_workspace = mujoco.MjData(model)
             prev_q_des = HOME_QPOS.copy()
@@ -202,7 +236,13 @@ def main():
                 else:
                     x_des, xd_des = ee_figure8_reference(data.time, ee_home_pos)
                 if args.space == "task":
-                    tau = task_space_impedance_torque(model, data, bias, ee_site_id, x_des, xd_des)
+                    R_des = ee_home_rot
+                    omega_des = np.zeros(3)
+                    tau = task_space_impedance_torque(
+                        model, data, bias, ee_site_id,
+                        x_des, xd_des,
+                        R_des, omega_des,
+                    )
                 elif args.space == "joint":
                     if ik_workspace is None:
                         raise RuntimeError("IK workspace not initialized.")
