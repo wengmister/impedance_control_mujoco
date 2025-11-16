@@ -1,14 +1,13 @@
 """
 Virtual-proxy bilateral teleoperation demo.
 
-Implements the "virtual proxy / virtual coupling" architecture from
-BILATERAL_TELEOP.md using the xArm master and Franka follower scene.
-
 The proxy lives in task space (EE position only) and is coupled to both
 arms with independent spring-damper pairs. The follower tracks the proxy
 through task-space impedance, while the master feels both the proxy
 coupling force and any reflected environment wrench measured at the
 follower end effector.
+
+## TODO: Code feels a little clunky; could be cleaned up with better abstractions.
 """
 
 from __future__ import annotations
@@ -25,7 +24,8 @@ import numpy as np
 from util.traj_viz import TrajectoryTrail
 
 
-MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_franka.xml"
+# MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_franka.xml"
+MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_ur5e.xml"
 
 # Virtual coupling gains (Cartesian translation/rotation).
 K_MASTER_POS = np.diag([600.0, 600.0, 600.0])
@@ -79,16 +79,39 @@ MASTER_CONFIG = ArmConfig(
     ee_site="master_attachment_site",
 )
 
-FOL_CONFIG = ArmConfig(
-    name="Franka follower",
-    prefix="follower_",
-    joint_names=[f"fr3_joint{i}" for i in range(1, 8)],
-    actuator_names=[f"fr3_torque{i}" for i in range(1, 8)],
-    home_qpos=np.array([0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]),
-    ee_site="follower_attachment_site",
-    ee_body="follower_fr3_link7",
-)
+# FOL_CONFIG = ArmConfig(
+#     name="Franka follower",
+#     prefix="follower_",
+#     joint_names=[f"fr3_joint{i}" for i in range(1, 8)],
+#     actuator_names=[f"fr3_torque{i}" for i in range(1, 8)],
+#     home_qpos=np.array([0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]),
+#     ee_site="follower_attachment_site",
+#     ee_body="follower_fr3_link7",
+# )
 
+FOL_CONFIG = ArmConfig(
+    name="UR5e follower",
+    prefix="follower_",
+    joint_names=[
+        "shoulder_pan_joint",
+        "shoulder_lift_joint",
+        "elbow_joint",
+        "wrist_1_joint",
+        "wrist_2_joint",
+        "wrist_3_joint",
+    ],
+    actuator_names=[
+        "shoulder_pan",
+        "shoulder_lift",
+        "elbow",
+        "wrist_1",
+        "wrist_2",
+        "wrist_3",
+    ],
+    home_qpos=np.array([-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0]),
+    ee_site="follower_attachment_site",
+    ee_body="follower_wrist_3_link",
+)
 
 @dataclass
 class VirtualProxy:
