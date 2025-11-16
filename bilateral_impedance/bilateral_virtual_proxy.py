@@ -27,10 +27,6 @@ from util.traj_viz import TrajectoryTrail
 
 MODEL_XML = Path("bilateral_impedance") / "scene_bilateral_xarm_franka.xml"
 
-# Reference poses taken from the single-arm demos.
-HOME_QPOS_XARM = np.array([0.0, -0.247, 0.0, 0.909, 0.0, 1.15644, 0.0])
-HOME_QPOS_FRANKA = np.array([0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853])
-
 # Virtual coupling gains (Cartesian translation/rotation).
 K_MASTER_POS = np.diag([600.0, 600.0, 600.0])
 D_MASTER_POS = np.diag([60.0, 60.0, 60.0])
@@ -55,17 +51,43 @@ FOLLOWER_TARGET_ORIENT_OFFSET = np.array([1.0, 0.0, 0.0, 0.0])
 # Scale applied when reflecting environment force back to the master.
 FORCE_REFLECTION_SCALE = 1.0
 
-# Names of the important sites/bodies after prefixing.
-MASTER_SITE = "master_attachment_site"
-FOLLOWER_SITE = "follower_attachment_site"
-FOLLOWER_EE_BODY = "follower_fr3_link7"
-
-
 @dataclass
 class ArmHandles:
     qpos_idx: np.ndarray
     qvel_idx: np.ndarray
     act_idx: np.ndarray
+
+
+@dataclass
+class ArmConfig:
+    name: str
+    prefix: str
+    joint_names: Sequence[str]
+    actuator_names: Sequence[str]
+    home_qpos: np.ndarray
+    ee_site: str
+    ee_body: str | None = None
+
+
+# Reference poses taken from the single-arm demos.
+MASTER_CONFIG = ArmConfig(
+    name="xArm7 master",
+    prefix="master_",
+    joint_names=[f"joint{i}" for i in range(1, 8)],
+    actuator_names=[f"act{i}" for i in range(1, 8)],
+    home_qpos=np.array([0.0, -0.247, 0.0, 0.909, 0.0, 1.15644, 0.0]),
+    ee_site="master_attachment_site",
+)
+
+FOL_CONFIG = ArmConfig(
+    name="Franka follower",
+    prefix="follower_",
+    joint_names=[f"fr3_joint{i}" for i in range(1, 8)],
+    actuator_names=[f"fr3_torque{i}" for i in range(1, 8)],
+    home_qpos=np.array([0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]),
+    ee_site="follower_attachment_site",
+    ee_body="follower_fr3_link7",
+)
 
 
 @dataclass
@@ -95,18 +117,18 @@ def compute_bias_forces(model: mujoco.MjModel, data: mujoco.MjData) -> np.ndarra
     return bias
 
 
-def make_arm_handles(
-    model: mujoco.MjModel, prefix: str, joint_names: Sequence[str], actuator_names: Sequence[str]
-) -> ArmHandles:
+def make_arm_handles(model: mujoco.MjModel, config: ArmConfig) -> ArmHandles:
     """Resolve joint/actuator indices for a prefixed arm."""
+    joint_names = config.joint_names
+    actuator_names = config.actuator_names
     if len(joint_names) != len(actuator_names):
         raise ValueError("Joint and actuator lists must match in length.")
     qpos_idx = []
     qvel_idx = []
     act_idx = []
     for j_name, a_name in zip(joint_names, actuator_names):
-        mj_joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}{j_name}")
-        mj_act = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}{a_name}")
+        mj_joint = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"{config.prefix}{j_name}")
+        mj_act = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{config.prefix}{a_name}")
         qpos_idx.append(model.jnt_qposadr[mj_joint])
         qvel_idx.append(model.jnt_dofadr[mj_joint])
         act_idx.append(mj_act)
@@ -237,28 +259,24 @@ def main() -> None:
     model = mujoco.MjModel.from_xml_path(str(MODEL_XML))
     data = mujoco.MjData(model)
 
-    master = make_arm_handles(
-        model,
-        prefix="master_",
-        joint_names=[f"joint{i}" for i in range(1, 8)],
-        actuator_names=[f"act{i}" for i in range(1, 8)],
-    )
-    follower = make_arm_handles(
-        model,
-        prefix="follower_",
-        joint_names=[f"fr3_joint{i}" for i in range(1, 8)],
-        actuator_names=[f"fr3_torque{i}" for i in range(1, 8)],
-    )
+    master = make_arm_handles(model, MASTER_CONFIG)
+    follower = make_arm_handles(model, FOL_CONFIG)
 
-    set_home_configuration(data, master, HOME_QPOS_XARM)
-    set_home_configuration(data, follower, HOME_QPOS_FRANKA)
+    set_home_configuration(data, master, MASTER_CONFIG.home_qpos)
+    set_home_configuration(data, follower, FOL_CONFIG.home_qpos)
     mujoco.mj_forward(model, data)
 
-    master_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, MASTER_SITE)
-    follower_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, FOLLOWER_SITE)
-    follower_body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, FOLLOWER_EE_BODY)
-    if master_site < 0 or follower_site < 0 or follower_body < 0:
-        raise ValueError("Failed to resolve master/follower site or body IDs.")
+    master_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, MASTER_CONFIG.ee_site)
+    follower_site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, FOL_CONFIG.ee_site)
+    follower_body = (
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, FOL_CONFIG.ee_body)
+        if FOL_CONFIG.ee_body is not None
+        else -1
+    )
+    if master_site < 0 or follower_site < 0:
+        raise ValueError("Failed to resolve master/follower site IDs.")
+    if FOL_CONFIG.ee_body is not None and follower_body < 0:
+        raise ValueError("Failed to resolve follower EE body ID.")
 
     master_pos = data.site_xpos[master_site].copy()
     master_quat = mat_to_quat(data.site_xmat[master_site])
@@ -271,8 +289,8 @@ def main() -> None:
 
     print("Launching virtual proxy teleoperation demo...")
     print(f"  model: {MODEL_XML}")
-    print("  master arm: xArm7 (prefix master_)")
-    print("  follower arm: Franka (prefix follower_)")
+    print(f"  master arm: {MASTER_CONFIG.name} (prefix {MASTER_CONFIG.prefix})")
+    print(f"  follower arm: {FOL_CONFIG.name} (prefix {FOL_CONFIG.prefix})")
 
     trail_master = (
         TrajectoryTrail(maxlen=args.trail_length, stride=args.trail_stride, color=np.array([0.2, 0.8, 0.2, 0.7]))
@@ -326,8 +344,12 @@ def main() -> None:
                 proxy.angvel - follower_angvel
             )
 
-            env_force = external_force_on_body(data, follower_body) * FORCE_REFLECTION_SCALE
-            env_torque = external_torque_on_body(data, follower_body) * FORCE_REFLECTION_SCALE
+            if follower_body >= 0:
+                env_force = external_force_on_body(data, follower_body) * FORCE_REFLECTION_SCALE
+                env_torque = external_torque_on_body(data, follower_body) * FORCE_REFLECTION_SCALE
+            else:
+                env_force = np.zeros(3)
+                env_torque = np.zeros(3)
 
             proxy_lin_acc = (-force_master - force_follower + env_force - PROXY_DAMP * proxy.vel) / PROXY_MASS
             proxy_ang_acc = (-torque_master - torque_follower + env_torque - PROXY_ANG_DAMP * proxy.angvel) / PROXY_INERTIA
