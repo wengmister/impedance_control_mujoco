@@ -12,8 +12,8 @@
     <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.4 0.4 0.4" rgb2="0.6 0.6 0.6"
       markrgb="0.4 0.4 0.4" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
-    <model name="xarm7" file="../mujoco_menagerie/ufactory_xarm7/xarm7_passive.xml"/>
-    <model name="ur5e" file="../mujoco_menagerie/universal_robots_ur5e/ur5e_passive.xml"/>
+    <model name="xarm7" file="../../mujoco_menagerie/ufactory_xarm7/xarm7_passive.xml"/>
+    <model name="ur5e" file="../../mujoco_menagerie/universal_robots_ur5e/ur5e_passive.xml"/>
   </asset>
 
   <worldbody>
