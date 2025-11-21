@@ -79,7 +79,7 @@ def make_franka_handles(model: mujoco.MjModel, prefix: str, dof: int) -> ArmHand
     act_idx = []
     for joint_id in range(1, dof + 1):
         joint_name = f"{prefix}fr3_joint{joint_id}"
-        actuator_name = f"{prefix}fr3_torque{joint_id}"
+        actuator_name = f"{prefix}fr3_passive{joint_id}"
         mj_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
         mj_act_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, actuator_name)
         qpos_idx.append(model.jnt_qposadr[mj_joint_id])
