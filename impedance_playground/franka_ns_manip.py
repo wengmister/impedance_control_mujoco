@@ -12,7 +12,7 @@ import numpy as np
 from util.torque_viz import TorqueIndicator
 from util.traj_viz import TrajectoryTrail
 
-MODEL_DIR = Path("xarm_impedance/scene")
+MODEL_DIR = Path("impedance_playground/scene")
 MODEL_XML = MODEL_DIR / "scene_franka_passive.xml"
 EE_SITE = "franka_attachment_site"
 
@@ -23,8 +23,9 @@ DX = np.array([100.0, 100.0, 100.0])
 KR = np.array([400.0, 400.0, 400.0])
 DR = np.array([5.0, 5.0, 5.0])
 
-K_NULL = np.array([10.0, 10.0, 10.0, 5.0, 5.0, 5.0, 1.0])
-D_NULL = np.array([1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.1])
+K_NULL = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0, 1.0])
+# D_NULL = np.array([1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.1])
+D_NULL = np.zeros_like(K_NULL)
 
 SWEEP_AMPLITUDE = 1.2 # rad
 SWEEP_FREQUENCY_HZ = 0.2

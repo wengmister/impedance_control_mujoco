@@ -23,7 +23,8 @@ HOME_QVEL = np.zeros_like(HOME_QPOS)
 # Joint-space gains (Nm/rad and Nms/rad). 
 # Tuned for a stiff, well-damped feel.
 KP = np.array([50, 50, 50, 50, 10, 10, 10])
-KD = np.array([40, 40, 35, 25, 18, 14, 10])
+# KD = np.array([40, 40, 35, 25, 18, 14, 10])
+KD = np.zeros_like(KP)
 
 # Small joint-space sine sweep around home pose.
 SINE_AMPLITUDE = np.array([0.00, 0.0, 0.05, 0.05, 0.1, 0.1, 0.1])
