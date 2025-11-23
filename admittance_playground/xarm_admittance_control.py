@@ -21,14 +21,14 @@ from util.torque_viz import TorqueIndicator
 from util.traj_viz import TrajectoryTrail
 
 
-MODEL_XML = Path("mujoco_menagerie/ufactory_xarm7/xarm7_admittance.xml")
+MODEL_XML = Path("admittance_playground/scene/scene_xarm_admittance.xml")
 EE_SITE = "attachment_site"
 
 # Keyframe pose from the MJCF
 HOME_QPOS = np.array([0.0, -0.247, 0.0, 0.909, 0.0, 1.15644, 0.0])
 
 # Admittance V2 Parameters
-ADMITTANCE_GAIN = 0.005   # (m/s) / N - Velocity per unit force
+ADMITTANCE_GAIN = 0.01    # (m/s) / N - Velocity per unit force
 DEADBAND = 2.0            # N - Ignore forces below this magnitude
 MAX_VELOCITY = 0.5        # m/s - Safety limit
 DT = 0.002                # s - Control loop timestep (approx)
