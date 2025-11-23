@@ -22,3 +22,6 @@ Similar enough such that joint space impedance control still works
 via EE proxy tracking    
 ![bilateral_diff_kin](https://github.com/user-attachments/assets/43ac3c25-12f3-45d4-880d-222b96a2e9d6)
 
+## Admittance control via EE FT Sensor
+EE Wrench -> EE twist    
+![xarm_admittance](https://github.com/user-attachments/assets/be27fbae-f346-4626-ad42-c314be90ce6a)
