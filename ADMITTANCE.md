@@ -5,9 +5,11 @@
 
   * External force affects robot **torque response**.
   * Controller enforces a *desired dynamic relationship*:
+    
     $$
     M_v \ddot{x} + B_v(\dot{x}-\dot{x}*d) + K_v(x-x_d) = F*{\text{ext}}
     $$
+    
   * Robot physically behaves like a mass–spring–damper.
   * Requires decent inverse dynamics or torque control.
 
@@ -139,9 +141,12 @@
 ## **7. Joint-Level Admittance**
 
 * Even with joint torque sensors:
+  
   $$
   \dot{q}*d = k*\tau , \tau_{\text{ext}}
   $$
+  
+  
   $$
   q_d[k+1] = q_d[k] + \dot{q}_d[k]\Delta t
   $$
@@ -159,3 +164,86 @@ Admittance control converts external forces or torques into motion commands by s
 
 Impedance control converts external forces into torques so the robot physically behaves like that compliant model.
 In practice, admittance often feels like an overdamped impedance controller, but internally they are fundamentally different.
+
+
+
+
+# Control objective formulation for non-backdriveable joints:
+
+## **Joint torque sensor enables “virtual backdriveability”**
+
+Torque sensing gives:
+
+[
+\tau_\text{ext} = \tau_\text{meas} - \tau_\text{act}
+]
+
+This external torque becomes the **input** to a virtual mass-spring-damper system.
+
+---
+
+## **Admittance formulation: torque → motion**
+
+Desired joint-level impedance is:
+
+[
+\tau_\text{ext}
+= M_d \ddot q + D_d \dot q + K_d(q - q_\text{ref})
+]
+
+Solve for **desired acceleration**:
+
+[
+\ddot q_\text{cmd}
+= M_d^{-1} (\tau_\text{ext} - D_d \dot q - K_d(q - q_\text{ref}))
+]
+
+Then integrate:
+
+[
+\dot q_\text{cmd} \leftarrow \dot q_\text{cmd} + \ddot q_\text{cmd} dt
+]
+[
+q_\text{cmd} \leftarrow q_\text{cmd} + \dot q_\text{cmd} dt
+]
+
+This creates a **virtual position** the joint *should* move to, consistent with the desired impedance.
+
+---
+
+## **Inner loop makes the real joint follow the virtual state**
+
+Use a fast joint servo (usually position or torque):
+
+[
+\tau_\text{motor}
+= K_p (q_\text{cmd} - q)
+
+* K_d(\dot q_\text{cmd} - \dot q)
+* \tau_g(q)
+  ]
+
+This forces the real joint to follow the virtual trajectory.
+
+Thus:
+
+* external torque → virtual acceleration
+* → virtual motion → real motor motion
+* → **real compliance**, even though the hardware is not backdriveable
+
+This is exactly how high-GR actuators fake compliance.
+
+---
+
+**Backdriveable joint:**
+
+* compliance emerges mechanically
+* controller just shapes torque
+
+**Non-backdriveable joint + torque sensor:**
+
+* compliance must be *created by control*
+* switch from impedance (motion → torque)
+  to **admittance** (torque → motion) internally
+* but the *overall behavior* feels like impedance
+
